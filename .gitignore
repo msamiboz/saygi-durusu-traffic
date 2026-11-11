@@ -1,0 +1,27 @@
+# data: raw downloads and licensed exports are never committed
+data/raw/
+*.parquet
+.env
+.env.*
+# pilot working copy (ported into src/)
+pilot/
+# python
+__pycache__/
+*.egg-info/
+.venv/
+.pytest_cache/
+.ruff_cache/
+build/
+dist/
+.DS_Store
+# latex
+paper/*.aux
+paper/*.log
+paper/*.out
+paper/*.bbl
+paper/*.blg
+paper/*.pdf
+!paper/main.pdf
+literature/pdfs/
+literature/txt/
+data/interim/

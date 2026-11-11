@@ -1,0 +1,37 @@
+[build-system]
+requires = ["hatchling==1.27.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "saygi"
+version = "0.2.0"
+description = "Effective duration of the 10 November 09:05 remembrance stop in Istanbul traffic"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [{ name = "Mehmet Sami Boz" }]
+dependencies = [
+  "numpy==2.3.5",
+  "pandas==2.3.3",
+  "matplotlib==3.10.3",
+  "requests==2.34.2",
+  "pyarrow==23.0.0",
+  "shapely==2.1.2",
+]
+
+[project.optional-dependencies]
+dev = ["pytest==9.1.1", "ruff==0.17.4"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/saygi"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["B905", "E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
