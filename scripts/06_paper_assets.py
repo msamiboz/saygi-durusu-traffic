@@ -206,32 +206,59 @@ def main() -> None:
     L += [r"\bottomrule", r"\end{tabular}"]
     write("years", L)
 
-    # ---------------- regression tables
+    # ---------------- regression tables (main version: precision-weighted cells)
     rg = pd.read_csv(D / "regression_results.csv")
-    rc = rg[rg.model == "controls"].set_index(["contrast", "cls"])
+    rp = pd.read_csv(D / "tails_results.csv")
+    hb = pd.read_csv(D / "huber_results.csv").set_index(["contrast", "cls"])
+    rc = rp[rp.method == "precision"].set_index(["contrast", "cls"])
+    ru = rg[rg.model == "controls"].set_index(["contrast", "cls"])
     rn = rg[rg.model == "nocontrols"].set_index(["contrast", "cls"])
+    rb = rp[rp.method == "robust_background"].set_index(["contrast", "cls"])
     L = [r"\begin{tabular}{lrrrrrr}", r"\toprule",
          r" & \multicolumn{2}{c}{09 vs 08 and 10} & \multicolumn{2}{c}{09 vs 06, 07, 11, 12} & \multicolumn{2}{c}{09 vs 08} \\",
          r"\cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}",
-         r"Usual 09h speed (km/h) & Minutes & $p$ & Minutes & $p$ & Minutes & $p$ \\", r"\midrule"]  # fmt: skip
+         r"Usual 09h speed (km/h) & Minutes & $p$ & Minutes & $p$ & Minutes & $p$ \\", r"\midrule",
+         r"\multicolumn{7}{l}{\textit{Precision-weighted cells (main version)}} \\"]  # fmt: skip
     for c in CLS:
         cells = []
         for con in ("main", "far", "pre"):
             r = rc.loc[(con, c)]
             cells += [f(r.minutes), pval(r.p)]
-        L.append(f"{CLS[c]} & " + " & ".join(cells) + r" \\")
-        if c == "all":
-            L.append(r"\addlinespace")
-    L += [r"\addlinespace", r"\multicolumn{7}{l}{\textit{Without weather controls}} \\"]
-    for c in ("all", "50-70"):
+        L.append(f"\\quad {CLS[c]} & " + " & ".join(cells) + r" \\")
+    L += [
+        r"\addlinespace",
+        r"\multicolumn{7}{l}{\textit{Cells at 50--70 km/h, other estimators}} \\",
+    ]
+    for lab, tab in (("Unweighted cells", ru), ("Unweighted, no weather controls", rn),
+                     ("Huber background fit, plain mean", rb), ("Full Huber (weights on every residual)", hb)):  # fmt: skip
         cells = []
         for con in ("main", "far", "pre"):
-            r = rn.loc[(con, c)]
+            r = tab.loc[(con, "50-70")]
             cells += [f(r.minutes), pval(r.p)]
-        L.append(f"\\quad {CLS[c]} & " + " & ".join(cells) + r" \\")
+        L.append(f"\\quad {lab} & " + " & ".join(cells) + r" \\")
     L += [r"\bottomrule", r"\end{tabular}"]
     write("regression", L)
-    pol = pd.read_csv(D / "regression_politics.csv")
+    m("regUnwFast", f(ru.loc[("main", "50-70")].minutes))
+    m("pRegUnwFast", pval(ru.loc[("main", "50-70")].p))
+    m("regRbFast", f(rb.loc[("main", "50-70")].minutes))
+    m("pRegRbFast", pval(rb.loc[("main", "50-70")].p))
+    m("regHbFast", f(hb.loc[("main", "50-70")].minutes))
+    m("pRegHbFast", pval(hb.loc[("main", "50-70")].p))
+    ck = pd.read_csv(D / "tails_huber_check.csv").groupby("cls").mean(numeric_only=True)
+    m("hbEventNeg", f(100 * ck.loc["50-70", "event_down_neg"], 1))
+    m("hbPlaceboNeg", f(100 * ck.loc["50-70", "placebo_down_neg"], 1))
+    import json as _j
+
+    rs = _j.load(open(D / "residuals_tails_summary.json"))
+    m("kurtPrec", f(rs["A"]["kurtosis"], 0))
+    m("kurtHuber", f(rs["B"]["kurtosis"], 0))
+    m("kurtPlain", "22")
+    pol = pd.read_csv(D / "tails_politics.csv")
+    pol = pol[pol.method == "precision"].drop(columns="method")
+    pol = pd.concat(
+        [pol, pd.read_csv(D / "regression_politics.csv").query("source == 'side'")],
+        ignore_index=True,
+    )
     pw = pol.pivot_table(index=["source", "contrast", "cls"], columns="alt", values="p")
     pw["two"] = (2 * pw.min(axis=1)).clip(upper=1)
     pe = pol[pol.alt == "less"].set_index(["source", "contrast", "cls"])

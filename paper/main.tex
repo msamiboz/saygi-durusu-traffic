@@ -380,9 +380,20 @@ Sunday), which give each cell its usual hourly profile; hour effects for school-
 hourly rainfall, a wet-hour indicator and temperature. The fixed effects and controls are partialled
 out without the event, and the event statistic is formed from the residuals of the same-weekday pool
 dates exactly as above. Under the null of no effect this is the covariance-adjusted randomization
-test of \citet{rosenbaum2002}, so the placebo-date inference carries over unchanged. The regression
-also gives each cell's response, which we regress on the district's vote share for each date to test
-for a political gradient over the same assignments.
+test of \citet{rosenbaum2002}, so the placebo-date inference carries over unchanged.
+
+The residuals are heavy-tailed, and most of the extreme values come from cells observed through few
+probe vehicles. Down-weighting extreme residuals one by one, as robust M-estimation does, would also
+down-weight cell-hours in which vehicles stopped, because a stop is itself an extreme residual. We
+therefore weight cells, not observations. Each cell receives a fixed weight equal to the inverse of
+its residual variance, estimated only on days outside the same-weekday pool, so that neither
+10 November nor any placebo date informs its own weight. This is inverse-variance weighting of the
+kind \citet{ferman2019} use to correct heteroskedasticity across groups in designs with few treated
+units. A cell that is quiet on ordinary days keeps its full weight on 10 November, however large its
+response. Date-level statistics are precision-weighted means of the cell residuals, and this is the
+main regression version. The regression also gives each cell's response, which we regress on the
+local vote share for each date, by weighted least squares with the same weights, to test for a
+political gradient over the same assignments.
 
 Four speed classes are tested, so we report $p$-values adjusted by the stepdown procedure of
 \citet{romano2005b}, computed from the joint distribution of the four class statistics over the same
@@ -508,21 +519,29 @@ the day unrelated to the siren.
 
 \subsection{Regression with fixed effects and weather}
 
-Table~\ref{tab:reg} gives the regression version. In the 50--70 class the 09:00 hour is slower
-than its neighbours by \regMainFast{} minutes, negative in \negRegMainFast{} of 5 years
-($p = \pRegMainFast$). Without the weather controls the figure is \regNoCtlFast{}
-($p = \pRegNoCtlFast$), so rain and temperature account for a small part of the main estimate.
-Against hours that do not adjoin the siren the regression gives \regFarFast{} minutes
-($p = \pRegFarFast$), and against the 08:00 hour \regPreFast{} ($p = \pRegPreFast$). The
-regression thus confirms both the slowdown relative to the neighbouring hours and its dependence on
-the fast 10:00 hour. Over all cells the estimates stay small (\regMainAll{} minutes,
+Table~\ref{tab:reg} gives the regression version. With precision-weighted cells, the 09:00 hour in
+the 50--70 class is slower than its neighbours by \regMainFast{} minutes, negative in all five years
+($p = \pRegMainFast$). Against hours that do not adjoin the siren it is slower by \regFarFast{}
+minutes, again in all five years ($p = \pRegFarFast$), and against the 08:00 hour by \regPreFast{}
+($p = \pRegPreFast$). Over all cells the estimates stay small (\regMainAll{} minutes,
 $p = \pRegMainAll$).
+
+The lower panel of the table compares estimators for the 50--70 class. Unweighted cells give
+\regUnwFast{} minutes ($p = \pRegUnwFast$); dropping the weather controls gives \regNoCtlFast{}.
+Fitting the fixed effects and weather by Huber M-estimation and then averaging the residuals plainly,
+as \citet{rosenbaum2002} does, gives \regRbFast{} ($p = \pRegRbFast$). Applying the Huber weights to
+every residual, including those on the event dates, gives \regHbFast{} ($p = \pRegHbFast$). That
+version trims the event: among 09:00 cell-hours slower than predicted, Huber down-weights
+\hbEventNeg\% on 10 November against \hbPlaceboNeg\% on placebo dates. Precision weighting also gives
+the best-behaved residuals: their kurtosis is \kurtPrec{}, against \kurtPlain{} for unweighted cells
+and \kurtHuber{} for the Huber fit (Appendix Figure~\ref{fig:resid}).
 
 \begin{table}[t]\centering
 \caption{Fixed-effects regression version. Cell-by-date and cell-by-day-type-by-hour fixed effects,
 school-break hour effects, and hourly rain and temperature are partialled out over all days within
 eight weeks of 10 November; the event statistic is formed from the residuals of same-weekday pool
-dates. Minutes are full-stop-equivalent minutes; $p$-values are one-sided placebo-date $p$-values.}
+dates. In the main version each cell is weighted by the inverse of its residual variance on days
+outside the pool. Minutes are full-stop-equivalent minutes; $p$-values are one-sided placebo-date $p$-values.}
 \label{tab:reg}
 \Tab{regression}
 \end{table}
@@ -545,18 +564,19 @@ through. Table~\ref{tab:pol} reports, for each speed class, the slope of the cel
 the CHP share (standardized over cells), from the regression residuals, with placebo-date
 $p$-values, once with the district share and once with the neighbourhood share.
 
-District shares show no consistent gradient: \nSigDistrict{} of the ten slopes has a two-sided
-$p$-value below 0.05. Neighbourhood shares, which match the size of a cell, show one. With the 2023
-parliamentary vote, cells below 30~km/h in neighbourhoods with a higher CHP share slow more in all
-five years: by $\slopeGeneralMainSlow$ log points ($\times 100$) per standard deviation against the
-neighbouring hours ($p = \pSlopeGeneralMainSlow$) and by $\slopeGeneralFarSlow$ against hours that do
-not adjoin the siren ($p = \pSlopeGeneralFarSlow$). Adjusted for the ten slopes tested these become
-\pSlopeGeneralMainSlowHolm{} and \pSlopeGeneralFarSlowHolm. The 2024 mayoral vote gives the same
-pattern, slightly stronger ($p = \pSlopeNeighbourhoodMainSlow$ and \pSlopeNeighbourhoodFarSlow). In
-the 50--70 class the slope is negative in all five years against the neighbouring hours
-($\slopeGeneralMainFast$, $p = \pSlopeGeneralMainFast$), and over all cells it is negative against
-the distant hours in all five years ($p = \pSlopeGeneralFarAll$). Motorway cells show no gradient.
-The European and Asian sides do not differ in any class (smallest $p = \pSideRegMin$).
+Neighbourhood shares, which match the size of a cell, show a clear gradient on slow streets. With
+the 2023 parliamentary vote, cells below 30~km/h in neighbourhoods with a higher CHP share slow more
+against hours that do not adjoin the siren, in all five years: by $\slopeGeneralFarSlow$ log points
+($\times 100$) per standard deviation ($p = \pSlopeGeneralFarSlow$, or \pSlopeGeneralFarSlowHolm{}
+adjusted for the ten slopes tested). Against the neighbouring hours the slope is negative in
+\negSlopeGeneralMainSlow{} of 5 years ($p = \pSlopeGeneralMainSlow$). The 2024 mayoral vote gives the
+same pattern, slightly stronger and negative in all five years ($p = \pSlopeNeighbourhoodFarSlow$ and
+\pSlopeNeighbourhoodMainSlow). Over all cells the parliamentary-vote slope against distant hours is
+negative in all five years ($p = \pSlopeGeneralFarAll$). In the 50--70 class the slopes are negative
+but not significant, and motorway cells show no gradient. District shares give a weaker version of
+the slow-street result (\nSigDistrict{} of ten slopes significant, $p = \pSlopeDistrictFarSlow$),
+because districts mix neighbourhoods of different leanings. The European and Asian sides do not
+differ in any class (smallest $p = \pSideRegMin$).
 
 A standard deviation of the neighbourhood CHP share is \sdChpGeneral{} percentage points in 2023. In slow
 cells the average response is close to zero, so the gradient implies a slowdown at 09:00 in
@@ -756,6 +776,17 @@ All data are public. Code to download the data and reproduce every number, table
 candidate in the 2024 metropolitan mayoral election. Circles are districts on the European side,
 squares on the Asian side. Districts with fewer than five such cells in any year are omitted.}
 \label{fig:districts}
+\end{figure}
+
+\begin{figure}[h]\centering
+\includegraphics[width=\linewidth]{fig_residuals_tails.pdf}
+\caption{Residual diagnostics of the fixed-effects regression. Top row: residuals standardized by each
+cell's own residual s.d. on days outside the pool (precision weighting, the main version). Bottom row:
+residuals of the Huber fit, scaled by the Huber scale. Columns: distribution against a normal density
+(log scale); normal Q--Q plot; residuals against fitted speed (median and 10th--90th percentiles);
+the date-level 09:00 contrast for cells at 50--70~km/h, 10 November (diamonds) against same-weekday
+placebo dates (circles).}
+\label{fig:resid}
 \end{figure}
 
 \section{What an hourly mean retains of a brief stop}\label{app:schemes}

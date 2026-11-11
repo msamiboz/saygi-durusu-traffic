@@ -180,3 +180,155 @@ def slope_stats(
             )
             rows.append(dict(cls=cls_, date=d, M=b, year=year, k=(d - ev).days // 7, n=len(h)))
     return pd.DataFrame(rows)
+
+
+# ---------------------------------------------------------------- Huber M-estimation
+
+HUBER_C = 1.345  # 95% efficiency under normal errors
+
+
+def huber_weights(r: np.ndarray, c: float = HUBER_C) -> tuple[np.ndarray, float]:
+    """Huber weights min(1, c*s/|r|) with s the normalized median absolute deviation."""
+    s = 1.4826 * float(np.median(np.abs(r - np.median(r))))
+    a = np.abs(r) / (c * s)
+    return np.where(a <= 1, 1.0, 1.0 / np.maximum(a, 1e-12)), s
+
+
+def _wdemean(
+    cols: np.ndarray, groups: list[np.ndarray], w: np.ndarray, iters: int = 30, tol: float = 1e-9
+) -> np.ndarray:
+    """Weighted alternating projections: removes weighted group means for each set of fixed effects."""
+    X = cols.astype(float).copy()
+    for _ in range(iters):
+        before = X.copy()
+        for g in groups:
+            sw = np.bincount(g, weights=w)
+            for j in range(X.shape[1]):
+                X[:, j] -= (np.bincount(g, weights=w * X[:, j]) / sw)[g]
+        if np.max(np.abs(X - before)) < tol:
+            break
+    return X
+
+
+def residualize_huber(L: pd.DataFrame, wx: pd.DataFrame, max_iter: int = 15, tol: float = 1e-4):
+    """Huber M-estimate of the fixed-effects model (no event dummies) by iteratively
+    reweighted least squares. Returns the panel with residuals `r` and final Huber
+    weights `w`, plus the control coefficients and the residual scale."""
+    L = L.merge(wx, on=["date", "hour"], how="left")
+    for c in ("rain", "wet", "temp"):
+        L[c] = L[c].fillna(L[c].mean())
+    g1 = pd.factorize(L.GEOHASH + "|" + L.date.astype(str))[0]
+    g2 = pd.factorize(L.GEOHASH + "|" + L.dt + "|" + L.hour.astype(str))[0]
+    g3 = pd.factorize(L.brk.astype(str) + "|" + L.hour.astype(str))[0]
+    xs = ["rain", "wet", "temp"]
+    Y = L[["y", *xs]].to_numpy(float)
+    w = np.ones(len(L))
+    beta = np.zeros(len(xs))
+    for _ in range(max_iter):
+        M = _wdemean(Y, [g1, g2, g3], w)
+        y, X = M[:, 0], M[:, 1:]
+        sw = np.sqrt(w)
+        b = np.linalg.lstsq(X * sw[:, None], y * sw, rcond=None)[0]
+        r = y - X @ b
+        w_new, s = huber_weights(r)
+        done = np.max(np.abs(b - beta)) < tol and np.max(np.abs(w_new - w)) < 1e-3
+        beta, w = b, w_new
+        if done:
+            break
+    L["r"], L["w"] = r, w
+    return L, dict(zip(xs, map(float, beta))), s
+
+
+def date_hour_means_w(L: pd.DataFrame, groups: pd.Series | None = None) -> pd.DataFrame:
+    """Huber-weighted mean residual by date, hour and group."""
+
+    def agg(df, keys):
+        a = df.assign(wr=df.w * df.r).groupby(keys)[["wr", "w"]].sum()
+        return (a.wr / a.w).rename("R").reset_index()
+
+    out = [agg(L, ["date", "hour"]).assign(cls="all")]
+    if groups is not None:
+        lab = L.GEOHASH.map(groups)
+        ok = lab.notna()
+        out.append(agg(L[ok].assign(cls=lab[ok]), ["cls", "date", "hour"]))
+    return pd.concat(out, ignore_index=True)
+
+
+def slope_stats_huber(L, z, cls_of, year, contrast="main", iters: int = 20) -> pd.DataFrame:
+    """As slope_stats, but each date's slope of the cell contrast on z is a Huber M-estimate."""
+    ev = cal.event(year)
+    W = L.pivot_table(index=["GEOHASH", "date"], columns="hour", values="r")
+    c = sum(w * W[h] for h, w in CONTRASTS[contrast].items()).rename("c").reset_index().dropna()
+    c = c[c.date.dt.dayofweek == ev.dayofweek]
+    c = c[[not cal.in_school_break(d) or d == ev for d in c.date]]
+    c["z"], c["cls"] = c.GEOHASH.map(z), c.GEOHASH.map(cls_of)
+    c = c.dropna()
+    rows = []
+    for cls_, g in [("all", c), *c.groupby("cls")]:
+        for d, h in g.groupby("date"):
+            X = np.column_stack([np.ones(len(h)), h.z.to_numpy()])
+            yv = h.c.to_numpy()
+            wv = np.ones(len(h))
+            b = np.zeros(2)
+            for _ in range(iters):
+                sw = np.sqrt(wv)
+                b_new = np.linalg.lstsq(X * sw[:, None], yv * sw, rcond=None)[0]
+                wv, _s = huber_weights(yv - X @ b_new)
+                if np.max(np.abs(b_new - b)) < 1e-7:
+                    b = b_new
+                    break
+                b = b_new
+            rows.append(
+                dict(cls=cls_, date=d, M=float(b[1]), year=year, k=(d - ev).days // 7, n=len(h))
+            )
+    return pd.DataFrame(rows)
+
+
+def cell_precision(L: pd.DataFrame, year: int) -> pd.Series:
+    """Inverse residual variance of each cell, estimated only on days outside the
+    same-weekday pool (so neither 10 November nor any placebo date informs its own
+    weight). Used to downweight cells that are noisy every day."""
+    ev = cal.event(year)
+    pool = set(cal.pool(year))
+    off = L[~L.date.isin(pool) & (L.date.dt.dayofweek != ev.dayofweek)]
+    v = off.groupby("GEOHASH").r.var()
+    v = v.clip(lower=v.quantile(0.01))  # guard against near-zero variances in tiny cells
+    return (1.0 / v).rename("prec")
+
+
+def date_hour_means_prec(
+    L: pd.DataFrame, prec: pd.Series, groups: pd.Series | None = None
+) -> pd.DataFrame:
+    """Precision-weighted mean residual by date, hour and group (weights fixed per cell)."""
+    L = L.assign(pw=L.GEOHASH.map(prec)).dropna(subset=["pw"])
+
+    def agg(df, keys):
+        a = df.assign(wr=df.pw * df.r).groupby(keys)[["wr", "pw"]].sum()
+        return (a.wr / a.pw).rename("R").reset_index()
+
+    out = [agg(L, ["date", "hour"]).assign(cls="all")]
+    if groups is not None:
+        lab = L.GEOHASH.map(groups)
+        ok = lab.notna()
+        out.append(agg(L[ok].assign(cls=lab[ok]), ["cls", "date", "hour"]))
+    return pd.concat(out, ignore_index=True)
+
+
+def slope_stats_weighted(L, z, cls_of, prec, year, contrast="main") -> pd.DataFrame:
+    """As slope_stats, with weighted least squares (cell precision as weight)."""
+    ev = cal.event(year)
+    W = L.pivot_table(index=["GEOHASH", "date"], columns="hour", values="r")
+    c = sum(w * W[h] for h, w in CONTRASTS[contrast].items()).rename("c").reset_index().dropna()
+    c = c[c.date.dt.dayofweek == ev.dayofweek]
+    c = c[[not cal.in_school_break(d) or d == ev for d in c.date]]
+    c["z"], c["cls"], c["pw"] = c.GEOHASH.map(z), c.GEOHASH.map(cls_of), c.GEOHASH.map(prec)
+    c = c.dropna()
+    rows = []
+    for cls_, g in [("all", c), *c.groupby("cls")]:
+        for d, h in g.groupby("date"):
+            zm = np.average(h.z, weights=h.pw)
+            cm = np.average(h.c, weights=h.pw)
+            den = (h.pw * (h.z - zm) ** 2).sum()
+            b = float((h.pw * (h.z - zm) * (h.c - cm)).sum() / den) if den > 0 else np.nan
+            rows.append(dict(cls=cls_, date=d, M=b, year=year, k=(d - ev).days // 7, n=len(h)))
+    return pd.DataFrame(rows)

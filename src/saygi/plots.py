@@ -133,3 +133,146 @@ def districts(d: pd.DataFrame, path) -> None:
     ax.grid(axis="y", color=GRID, lw=0.5)
     ax.legend(loc="lower left", bbox_to_anchor=(0, 1.0), ncol=2, fontsize=7.5, handletextpad=0.4)
     _save(fig, path)
+
+
+def residuals(P: pd.DataFrame, S: pd.DataFrame, fitted, resid, path) -> None:
+    """Four-panel residual diagnostic for the fixed-effects regression."""
+    fig, ax = plt.subplots(2, 2, figsize=(7.4, 5.6))
+    # A: hourly profile, 50-70 cells
+    a = ax[0, 0]
+    pl = P[~P.event]
+    for (_, _), g in pl.groupby(["year", "date"]):
+        g = g.sort_values("hour")
+        a.plot(g.hour, g.R * 100, color=PLACEBO, lw=0.6, alpha=0.35)
+    ev = P[P.event].groupby("hour").R.mean() * 100
+    a.plot(
+        ev.index,
+        ev.values,
+        color=EVENT,
+        lw=2,
+        marker="D",
+        ms=4,
+        label="10 November (mean of 5 years)",
+    )
+    a.plot([], [], color=PLACEBO, lw=0.8, label="Placebo dates")
+    a.axhline(0, color=MUTED, lw=0.6)
+    a.axvspan(8.5, 9.5, color=EVENT, alpha=0.07, lw=0)
+    a.set_xlabel("Hour")
+    a.set_ylabel("Mean residual (log points × 100)")
+    a.set_title("A  Hourly residuals, 50–70 km/h cells", loc="left", fontsize=8.5)
+    a.legend(fontsize=7, loc="lower left")
+    # B: distribution
+    b = ax[0, 1]
+    b.hist(resid * 100, bins=np.linspace(-60, 60, 121), color=EVENT, alpha=0.75)
+    b.set_yscale("log")
+    b.set_xlabel("Cell-hour residual (log points × 100)")
+    b.set_ylabel("Count (log scale)")
+    b.set_title("B  Distribution of residuals", loc="left", fontsize=8.5)
+    # C: residual vs fitted, binned
+    c = ax[1, 0]
+    fv = np.exp(np.asarray(fitted))
+    bins = np.quantile(fv, np.linspace(0, 1, 31))
+    idx = np.clip(np.digitize(fv, bins) - 1, 0, 29)
+    mid = [np.median(fv[idx == i]) for i in range(30)]
+    q = [np.quantile(resid[idx == i] * 100, [0.1, 0.5, 0.9]) for i in range(30)]
+    q = np.array(q)
+    c.fill_between(
+        mid, q[:, 0], q[:, 2], color=PLACEBO, alpha=0.3, lw=0, label="10th–90th percentile"
+    )
+    c.plot(mid, q[:, 1], color=EVENT, lw=1.6, label="Median")
+    c.axhline(0, color=MUTED, lw=0.6)
+    c.set_xscale("log")
+    c.set_xlabel("Fitted speed (km/h, log scale)")
+    c.set_ylabel("Residual (log points × 100)")
+    c.set_title("C  Residuals against fitted values", loc="left", fontsize=8.5)
+    c.legend(fontsize=7, loc="upper right")
+    # D: date-level contrast
+    d = ax[1, 1]
+    s = S[S.cls == "50-70"]
+    rng = np.random.default_rng(3)
+    for i, (_y, g) in enumerate(s.groupby("year")):
+        e = g.k == 0
+        d.scatter(g.M[~e] * 100, i + rng.uniform(-0.15, 0.15, (~e).sum()), s=14, facecolors="none",
+                  edgecolors=PLACEBO, linewidths=0.8)  # fmt: skip
+        d.scatter(
+            g.M[e] * 100, [i], s=34, color=EVENT, marker="D", edgecolors="white", linewidths=0.6
+        )
+    d.set_yticks(range(5), [str(y) for y in sorted(s.year.unique())])
+    d.axvline(0, color=MUTED, lw=0.6)
+    d.invert_yaxis()
+    d.set_xlabel("09h vs 08h and 10h, residual (log points × 100)")
+    d.set_title("D  Date-level contrast, 50–70 km/h cells", loc="left", fontsize=8.5)
+    for axx in ax.ravel():
+        axx.grid(axis="y", color=GRID, lw=0.5)
+    fig.tight_layout()
+    _save(fig, path)
+
+
+def residuals_tails(samp: dict, stats: dict, path) -> None:
+    """2 x 4 residual diagnostic: rows A (precision weighting) and B (robust background)."""
+    from scipy import stats as st
+
+    titles = {"A": "A  Precision weighting", "B": "B  Robust background (Huber fit)"}
+    fig, ax = plt.subplots(2, 4, figsize=(10.5, 5.2))
+    for i, k in enumerate(("A", "B")):
+        e = samp[k].e.to_numpy()
+        z = (e - e.mean()) / e.std()
+        # distribution vs normal, log scale
+        a = ax[i, 0]
+        bins = np.linspace(-8, 8, 97)
+        a.hist(z, bins=bins, density=True, color=EVENT, alpha=0.7, label="Residuals")
+        a.plot(bins, st.norm.pdf(bins), color=INK, lw=1, label="Normal")
+        a.set_yscale("log")
+        a.set_ylim(1e-6, 1)
+        a.set_xlabel("Standardized residual")
+        a.set_ylabel(titles[k] + "\n\nDensity (log scale)")
+        a.legend(fontsize=6.5, loc="upper right")
+        # Q-Q
+        b = ax[i, 1]
+        q = np.linspace(0.0005, 0.9995, 400)
+        b.plot(st.norm.ppf(q), np.quantile(z, q), color=EVENT, lw=1.6)
+        lim = [-4, 4]
+        b.plot(lim, lim, color=MUTED, lw=0.7, ls=(0, (3, 2)))
+        b.set_xlabel("Normal quantile")
+        b.set_ylabel("Residual quantile")
+        # residual vs fitted (binned)
+        c = ax[i, 2]
+        fv = samp[k].fitted.to_numpy()
+        edges = np.quantile(fv, np.linspace(0, 1, 31))
+        idx = np.clip(np.digitize(fv, edges) - 1, 0, 29)
+        mid = np.array([np.median(fv[idx == j]) for j in range(30)])
+        qq = np.array([np.quantile(z[idx == j], [0.1, 0.5, 0.9]) for j in range(30)])
+        c.fill_between(
+            mid, qq[:, 0], qq[:, 2], color=PLACEBO, alpha=0.3, lw=0, label="10th–90th pct"
+        )
+        c.plot(mid, qq[:, 1], color=EVENT, lw=1.5, label="Median")
+        c.axhline(0, color=MUTED, lw=0.6)
+        c.set_xscale("log")
+        c.set_xticks([20, 30, 50, 70, 100], ["20", "30", "50", "70", "100"])
+        c.minorticks_off()
+        c.set_xlabel("Fitted speed (km/h)")
+        c.set_ylabel("Standardized residual")
+        c.legend(fontsize=6.5, loc="upper right")
+        # date-level contrast, 50-70
+        d = ax[i, 3]
+        s = stats[k]
+        s = s[(s.cls == "50-70") & (s.contrast == "main")]
+        rng = np.random.default_rng(3)
+        for j, (_y, g) in enumerate(s.groupby("year")):
+            ev = g.k == 0
+            T = (g.M - (g.M.sum() - g.M) / (len(g) - 1)) * 100
+            d.scatter(T[~ev], j + rng.uniform(-0.15, 0.15, (~ev).sum()), s=12, facecolors="none",
+                      edgecolors=PLACEBO, linewidths=0.8)  # fmt: skip
+            d.scatter(T[ev], [j], s=30, color=EVENT, marker="D", edgecolors="white", linewidths=0.6)
+        d.set_yticks(range(5), [str(y) for y in sorted(s.year.unique())])
+        d.axvline(0, color=MUTED, lw=0.6)
+        d.invert_yaxis()
+        d.set_xlabel("09h contrast, date minus\nother dates (log points × 100)")
+        for axx in ax[i]:
+            axx.grid(axis="y", color=GRID, lw=0.5)
+    for j, t in enumerate(
+        ("Distribution", "Normal Q–Q", "Residual vs fitted", "Date level, 50–70 km/h")
+    ):
+        ax[0, j].set_title(t, fontsize=8.5, loc="left")
+    fig.tight_layout()
+    _save(fig, path)

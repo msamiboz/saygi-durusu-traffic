@@ -54,6 +54,10 @@ python scripts/03_estimate.py         # data/derived/*.csv, *.json
 python scripts/04_index_2026.py       # five-minute traffic index, 10 Nov 2026
 python scripts/05_figures.py          # figures/
 python scripts/07_regression.py       # fixed-effects regression, political gradients
+python scripts/09_huber.py            # Huber robust comparison
+python scripts/10_tails.py            # precision weighting (main regression version), robust background
+python scripts/08_residuals.py        # residual diagnostics, unweighted
+python scripts/11_residuals_compare.py # residual diagnostics, precision vs Huber
 python scripts/06_paper_assets.py     # paper/tables/*.tex, paper/numbers.tex
 cd paper && pdflatex main && bibtex main && pdflatex main && pdflatex main
 pytest                                 # synthetic-data tests + regression against the pilot
