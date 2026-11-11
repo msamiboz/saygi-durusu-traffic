@@ -4,7 +4,7 @@
 
 DOIs were resolved on Crossref or arXiv and matched to each PDF's first pages on title and first author.
 
-Files: [`references.csv`](references.csv), BibTeX [`../paper/references.bib`](../paper/references.bib), the review [`review.md`](review.md), research notes in [`notes/`](notes/), and full-text reading notes with page numbers in [`reading/`](reading/) (start with [`reading/DIGEST.md`](reading/DIGEST.md)).
+Files: [`references.csv`](references.csv), BibTeX [`../paper/references.bib`](../paper/references.bib), full-text reading notes with page numbers in [`reading/`](reading/) (start with [`reading/DIGEST.md`](reading/DIGEST.md)); an early search-based scan is kept in [`archive/`](archive/).
 
 ## Moments of silence and commemoration
 

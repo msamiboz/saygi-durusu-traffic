@@ -25,3 +25,4 @@ paper/*.pdf
 literature/pdfs/
 literature/txt/
 data/interim/
+paper/results.html
